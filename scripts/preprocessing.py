@@ -62,7 +62,6 @@ def preprocess_for_logistic(X_train, X_val, X_test, categorical_cols):
     - Standardize numeric features
     - One-hot encode categorical features (drop first)
     """
-    from sklearn.preprocessing import StandardScaler, OneHotEncoder
 
     numeric_cols = [col for col in X_train.columns if col not in categorical_cols]
 
