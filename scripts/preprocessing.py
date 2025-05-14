@@ -154,3 +154,63 @@ def preprocess_for_lightgbm(X_train, X_val, X_test, categorical_cols):
             df[col] = df[col].astype('category')
     
     return X_train_lgb, X_val_lgb, X_test_lgb
+
+
+#outlier treatment
+param_grid = {
+    # now under “preproc__outlier_treatment__…”
+    'preproc__outlier_treatment__kw_args': [
+        {'low_t': lim, 'high_t': lim, 'columns': winsor_col}
+        for lim in (0.001,0.005,0.01,0.03,0.05)
+    ],
+    # classifier‐only params stay under “clf__…”
+    'clf__hidden_layer_sizes':  [(50,), (100,), (50,50)],
+    'clf__alpha':               [1e-4, 1e-3],
+    'clf__learning_rate_init':  [1e-3, 1e-2],
+}
+
+preproc_param_grid = {
+    k.replace('preproc__',''): v
+    for k,v in param_grid.items()
+    if k.startswith('preproc__')
+}
+
+from scipy.stats.mstats import winsorize
+winsor_col = ['sight_left',
+ 'sight_right',
+ 'urine_protein_mapped',
+ 'age',
+ 'height',
+ 'weight',
+ 'waistline',
+ 'SBP',
+ 'DBP',
+ 'BLDS',
+ 'tot_chole',
+ 'HDL_chole',
+ 'LDL_chole',
+ 'triglyceride',
+ 'hemoglobin',
+ 'serum_creatinine',
+ 'SGOT_AST',
+ 'SGOT_ALT',
+ 'gamma_GTP',
+ 'BMI',
+ 'pulse_pressure',
+ 'AST_ALT_ratio']
+def _winsor_df(X, low_t, high_t, columns):
+    # 如果 X 是 ndarray，先变回 DataFrame
+    df = X.copy()
+    for col in columns:
+        arr = df[col].to_numpy()
+        arr_w = winsorize(arr, limits=(low_t, high_t))
+        df[col] = np.ma.filled(arr_w, fill_value=np.nan)
+    return df  
+
+# FunctionTransformer 接收 kw_args，把 low_t, high_t, col_names 当参数传入
+winsor = FunctionTransformer(
+    func=_winsor_df,
+    kw_args={'low_t': 0.01, 'high_t': 0.01, 'columns': winsor_col},
+    validate=False
+)
+
