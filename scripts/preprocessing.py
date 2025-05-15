@@ -62,7 +62,6 @@ def preprocess_for_logistic(X_train, X_val, X_test, categorical_cols):
     - Standardize numeric features
     - One-hot encode categorical features (drop first)
     """
-    from sklearn.preprocessing import StandardScaler, OneHotEncoder
 
     numeric_cols = [col for col in X_train.columns if col not in categorical_cols]
 
@@ -155,62 +154,124 @@ def preprocess_for_lightgbm(X_train, X_val, X_test, categorical_cols):
     
     return X_train_lgb, X_val_lgb, X_test_lgb
 
+# =========================================
+# Dimensionality Reduction
+# =========================================
 
-#outlier treatment
-param_grid = {
-    # now under “preproc__outlier_treatment__…”
-    'preproc__outlier_treatment__kw_args': [
-        {'low_t': lim, 'high_t': lim, 'columns': winsor_col}
-        for lim in (0.001,0.005,0.01,0.03,0.05)
-    ],
-    # classifier‐only params stay under “clf__…”
-    'clf__hidden_layer_sizes':  [(50,), (100,), (50,50)],
-    'clf__alpha':               [1e-4, 1e-3],
-    'clf__learning_rate_init':  [1e-3, 1e-2],
-}
+def apply_tsne(X, y=None, n_components=2, sample_size=5000, random_state=42, 
+               perplexity=30, n_iter=1000, learning_rate='auto'):
+    """
+    Apply t-SNE dimensionality reduction to the data.
+    
+    Parameters:
+    -----------
+    X : array-like or DataFrame
+        Input features
+    y : array-like, optional
+        Target variable for coloring the plot
+    n_components : int, default=2
+        Number of dimensions for t-SNE output
+    sample_size : int, default=5000
+        Number of samples to use (t-SNE is computationally expensive)
+    random_state : int, default=42
+        Random seed for reproducibility
+    perplexity : int, default=30
+        t-SNE perplexity parameter
+    n_iter : int, default=1000
+        Number of iterations for t-SNE
+    learning_rate : str or float, default='auto'
+        Learning rate for t-SNE
+        
+    Returns:
+    --------
+    tuple
+        - X_tsne : array-like
+            t-SNE transformed data
+        - tsne_df : DataFrame
+            DataFrame containing t-SNE results and target variable (if provided)
+    """
+    from sklearn.manifold import TSNE
+    import pandas as pd
+    import numpy as np
+    
+    # Convert to numpy array if DataFrame
+    if isinstance(X, pd.DataFrame):
+        X = X.values
+    
+    # Sample the data if needed
+    if len(X) > sample_size:
+        indices = np.random.choice(len(X), sample_size, replace=False)
+        X_sample = X[indices]
+        y_sample = y[indices] if y is not None else None
+    else:
+        X_sample = X
+        y_sample = y
+    
+    # Apply t-SNE
+    tsne = TSNE(
+        n_components=n_components,
+        random_state=random_state,
+        perplexity=perplexity,
+        n_iter=n_iter,
+        learning_rate=learning_rate
+    )
+    
+    X_tsne = tsne.fit_transform(X_sample)
+    
+    # Create DataFrame with results
+    tsne_df = pd.DataFrame({
+        f'TSNE{i+1}': X_tsne[:, i] for i in range(n_components)
+    })
+    
+    if y_sample is not None:
+        tsne_df['Target'] = y_sample
+    
+    return X_tsne, tsne_df
 
-preproc_param_grid = {
-    k.replace('preproc__',''): v
-    for k,v in param_grid.items()
-    if k.startswith('preproc__')
-}
+def plot_tsne(tsne_df, target_col='Target', figsize=(10, 8), title='t-SNE Visualization'):
+    """
+    Plot t-SNE results.
+    
+    Parameters:
+    -----------
+    tsne_df : DataFrame
+        DataFrame containing t-SNE results and target variable
+    target_col : str, default='Target'
+        Name of the target column for coloring
+    figsize : tuple, default=(10, 8)
+        Figure size
+    title : str, default='t-SNE Visualization'
+        Plot title
+    """
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    
+    plt.figure(figsize=figsize)
+    sns.scatterplot(
+        data=tsne_df,
+        x='TSNE1',
+        y='TSNE2',
+        hue=target_col,
+        palette='Set1',
+        alpha=0.7
+    )
+    plt.title(title)
+    plt.xlabel('t-SNE Component 1')
+    plt.ylabel('t-SNE Component 2')
+    plt.legend(title=target_col)
+    plt.grid(True, alpha=0.3)
+    plt.show()
 
-from scipy.stats.mstats import winsorize
-winsor_col = ['sight_left',
- 'sight_right',
- 'urine_protein_mapped',
- 'age',
- 'height',
- 'weight',
- 'waistline',
- 'SBP',
- 'DBP',
- 'BLDS',
- 'tot_chole',
- 'HDL_chole',
- 'LDL_chole',
- 'triglyceride',
- 'hemoglobin',
- 'serum_creatinine',
- 'SGOT_AST',
- 'SGOT_ALT',
- 'gamma_GTP',
- 'BMI',
- 'pulse_pressure',
- 'AST_ALT_ratio']
-def _winsor_df(X, low_t, high_t, columns):
-    # 如果 X 是 ndarray，先变回 DataFrame
-    df = X.copy()
-    for col in columns:
-        arr = df[col].to_numpy()
-        arr_w = winsorize(arr, limits=(low_t, high_t))
-        df[col] = np.ma.filled(arr_w, fill_value=np.nan)
-    return df  
-
-# FunctionTransformer 接收 kw_args，把 low_t, high_t, col_names 当参数传入
-winsor = FunctionTransformer(
-    func=_winsor_df,
-    kw_args={'low_t': 0.01, 'high_t': 0.01, 'columns': winsor_col},
-    validate=False
-)
-
+def save_tsne_results(tsne_df, output_path):
+    """
+    Save t-SNE results to CSV file.
+    
+    Parameters:
+    -----------
+    tsne_df : DataFrame
+        DataFrame containing t-SNE results
+    output_path : str or Path
+        Path to save the results
+    """
+    tsne_df.to_csv(output_path, index=False)
+    print(f"t-SNE results saved to {output_path}")
