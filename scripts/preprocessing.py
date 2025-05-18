@@ -1,5 +1,3 @@
-# scripts/preprocessing.py
-
 # ====================================================
 # Preprocessing Functions
 # ----------------------------------------------------
@@ -8,7 +6,7 @@
 # - Scaling numeric features
 # - Encoding categorical features
 # - Model-specific preprocessing pipelines
-# - Feature selection based on VIF
+# - Feature selection based on VIF and t-SNE
 # ====================================================
 
 import pandas as pd
@@ -36,15 +34,12 @@ def impute_missing_values(X_train, X_val, X_test, strategy='median'):
     Returns:
     - X_train_imputed, X_val_imputed, X_test_imputed
     """
-    # Detect strictly numeric columns
     numeric_cols = X_train.select_dtypes(include=['int64', 'float64']).columns.tolist()
 
-    # Copy original data
     X_train_imp = X_train.copy()
     X_val_imp = X_val.copy()
     X_test_imp = X_test.copy()
 
-    # Apply imputer only to numeric columns
     imputer = SimpleImputer(strategy=strategy)
     X_train_imp[numeric_cols] = imputer.fit_transform(X_train[numeric_cols])
     X_val_imp[numeric_cols] = imputer.transform(X_val[numeric_cols])
@@ -124,13 +119,29 @@ def select_low_vif_features(X, threshold=5.0):
 def preprocess_for_tree_models(X_train, X_val, X_test):
     """
     Preprocessing pipeline for Random Forest and XGBoost:
+    - Remove outliers from numeric columns (using training set quantiles)
     - No scaling needed
     - Use imputed data directly
     
     Returns:
-    - X_train, X_val, X_test (already imputed)
+    - X_train, X_val, X_test (already imputed and outliers handled)
     """
-    return X_train.copy(), X_val.copy(), X_test.copy()
+    numeric_cols = X_train.select_dtypes(include=['int64', 'float64']).columns.tolist()
+    
+    # Use training set quantiles to clip outliers for all sets
+    def remove_outliers_consistent(df, ref_df, columns, k=1.5):
+        for column in columns:
+            q1 = ref_df[column].quantile(0.25)
+            q3 = ref_df[column].quantile(0.75)
+            iqr = q3 - q1
+            df[column] = df[column].clip(lower=q1 - k * iqr, upper=q3 + k * iqr)
+        return df
+
+    X_train_out = remove_outliers_consistent(X_train.copy(), X_train, numeric_cols)
+    X_val_out = remove_outliers_consistent(X_val.copy(), X_train, numeric_cols)
+    X_test_out = remove_outliers_consistent(X_test.copy(), X_train, numeric_cols)
+
+    return X_train_out, X_val_out, X_test_out
 
 # =========================================
 # LightGBM preprocessing
@@ -139,15 +150,29 @@ def preprocess_for_tree_models(X_train, X_val, X_test):
 def preprocess_for_lightgbm(X_train, X_val, X_test, categorical_cols):
     """
     Preprocessing pipeline for LightGBM:
+    - Remove outliers from numeric columns (using training set quantiles)
     - Set categorical columns' dtype to 'category'
     
     Returns:
-    - X_train, X_val, X_test with categorical columns correctly typed
+    - X_train, X_val, X_test with categorical columns correctly typed and outliers handled
     """
     X_train_lgb = X_train.copy()
     X_val_lgb = X_val.copy()
     X_test_lgb = X_test.copy()
     
+    numeric_cols = X_train_lgb.select_dtypes(include=['int64', 'float64']).columns.tolist()
+    def remove_outliers_consistent(df, ref_df, columns, k=1.5):
+        for column in columns:
+            q1 = ref_df[column].quantile(0.25)
+            q3 = ref_df[column].quantile(0.75)
+            iqr = q3 - q1
+            df[column] = df[column].clip(lower=q1 - k * iqr, upper=q3 + k * iqr)
+        return df
+    X_train_lgb = remove_outliers_consistent(X_train_lgb, X_train_lgb, numeric_cols)
+    X_val_lgb = remove_outliers_consistent(X_val_lgb, X_train_lgb, numeric_cols)
+    X_test_lgb = remove_outliers_consistent(X_test_lgb, X_train_lgb, numeric_cols)
+
+ 
     for col in categorical_cols:
         for df in [X_train_lgb, X_val_lgb, X_test_lgb]:
             df[col] = df[col].astype('category')
