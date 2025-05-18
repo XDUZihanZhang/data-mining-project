@@ -4,6 +4,11 @@ This project aims to predict individual alcohol consumption patterns based on va
 
 We explore multiple machine learning models, including Logistic Regression, Random Forest, XGBoost, LightGBM and MLP, to perform binary classification (drinking vs. non-drinking).
 
+## Dataset
+
+The dataset used in this project can be downloaded from:  
+- [Kaggle Download Link](https://www.kaggle.com/datasets/sooyoungher/smoking-drinking-dataset/data)  
+- [Google Drive Download Link](https://drive.google.com/drive/folders/1RSMcVVyuzdNXgV9icpH8_hyDMmzcRu3X?usp=sharing)
 ---
 
 ## Project Structure
@@ -55,6 +60,7 @@ DATA-MINING-PROJECT/
    - Impute missing values.
    - Scale numerical features.
    - Encode categorical features.
+   - Preprocessing specific to MLP
 
 5. **Model Training and Evaluation**  
    - Five models:
